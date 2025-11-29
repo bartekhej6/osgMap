@@ -8,11 +8,40 @@
 #include <osg/MatrixTransform>
 #include <osg/ShapeDrawable>
 
+#include <osgSim/ShapeAttribute>
+
 #include <iostream>
+#include <map>
 
 #include "common.h"
 
 using namespace osg;
+
+using Mapping = std::map<std::string, std::vector<osg::ref_ptr<osg::Node>>>;
+
+void parse_meta_data(osg::Node* model, Mapping & umap)
+{
+    osg::Group * group = model->asGroup();
+
+    for (unsigned i = 0; i < group->getNumChildren(); i++)
+    {
+        osg::Node* kido = group->getChild(i);
+        osgSim::ShapeAttributeList * sal = (osgSim::ShapeAttributeList*)kido->getUserData();
+        if (!sal)
+            continue;
+
+        for (unsigned j = 0; j < sal->size(); j++)
+        {
+            // sprawdzamy czy atrybut nazywa siê "fclass"
+            // dla terenu to opis typu kultury
+            if ((*sal)[j].getName().find("fclass") != std::string::npos)
+            {
+                if ((*sal)[j].getType() == osgSim::ShapeAttribute::STRING)
+                    umap[(*sal)[j].getString()].push_back(kido);
+            }
+        }
+    }
+}
 
 osg::Node* process_landuse(osg::Matrixd& ltw, const std::string & file_path)
 {
@@ -36,6 +65,7 @@ osg::Node* process_landuse(osg::Matrixd& ltw, const std::string & file_path)
         osg::DegreesToRadians(mgbb.center().x()), 0.0, ltw);
 
 
+    // Transformacja ze wspó³rzêdnych geograficznych (GEO) do wspó³rzêdnych œwiata (WGS)
     ConvertFromGeoProjVisitor<true> cfgp;
     land_model->accept(cfgp);
 
@@ -44,16 +74,16 @@ osg::Node* process_landuse(osg::Matrixd& ltw, const std::string & file_path)
 
 
 
+#if 0
+    // dokonuj dodatkowego przetwarzania wierzcho³ków po transformacji z uk³adu Geo do WGS
+    Mapping umap;
+    parse_meta_data(land_model, umap);
+#endif
 
 
 
 
     // GOOD LUCK!
-
-
-
-
-
 
 
 
