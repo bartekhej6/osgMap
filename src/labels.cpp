@@ -31,7 +31,6 @@
 
 using namespace osg;
 
-// --- STRUKTURA DANYCH ---
 struct LabelData
 {
     osg::Vec3 position;
@@ -40,7 +39,6 @@ struct LabelData
     std::string subtype;
 };
 
-// --- CZYTNIK DBF ---
 class SimpleDBFReader {
 public:
     struct Record
@@ -156,7 +154,6 @@ public:
     }
 };
 
-// --- ESTRAKCJA GEOMETRII ---
 class OnlyGeometryExtractor : public osg::NodeVisitor {
 public:
     std::vector<osg::Vec3> _positions;
@@ -177,89 +174,64 @@ public:
     }
 };
 
-// --- HELPER: LOGIKA DOBIERANIA IKON ---
 std::string determineIconTexture(const std::string& type,
                                  const std::string& subtype)
 {
-    // Transport
-    if (subtype.find("bus_stop") != std::string::npos) return "bus.png";
-    if (subtype.find("tram_stop") != std::string::npos) return "tram.png";
-    if (subtype.find("subway") != std::string::npos
-        || subtype.find("metro") != std::string::npos)
-        return "subway.png";
-    if (subtype.find("railway") != std::string::npos
-        || subtype.find("train") != std::string::npos)
-        return "train.png";
+    auto matches = [&](const std::string& keyword) {
+        return (subtype.find(keyword) != std::string::npos
+                || type.find(keyword) != std::string::npos);
+    };
 
-    // Edukacja
-    if (subtype.find("university") != std::string::npos
-        || type.find("university") != std::string::npos)
-        return "university.png";
-    if (subtype.find("school") != std::string::npos
-        || type.find("school") != std::string::npos)
-        return "school.png";
-    if (subtype.find("kindergarten") != std::string::npos) return "school.png";
+    // --- TRANSPORT ---
+    if (matches("bus_stop")) return "bus.png";
+    if (matches("tram_stop")) return "tram.png";
+    if (matches("subway_entrance")) return "subway.png";
+    if (matches("station")) return "train.png";
+    if (matches("halt")) return "default.png";
 
-    // Jedzenie / Bary
-    if (subtype.find("bar") != std::string::npos
-        || subtype.find("pub") != std::string::npos)
-        return "bar.png";
-    if (subtype.find("cafe") != std::string::npos) return "cafe.png";
-    if (subtype.find("restaurant") != std::string::npos)
-        return "restaurant.png";
-    if (subtype.find("fast_food") != std::string::npos) return "restaurant.png";
-    if (type.find("food") != std::string::npos) return "restaurant.png";
+    // --- EDUKACJA ---
+    if (matches("university")) return "university.png";
+    if (matches("college")) return "university.png";
+    if (matches("school")) return "school.png";
+    if (matches("kindergarten")) return "school.png";
 
-    // Inne
-    if (subtype.find("bank") != std::string::npos) return "bank.png";
-    if (subtype.find("hospital") != std::string::npos
-        || type.find("hospital") != std::string::npos)
-        return "hospital.png";
-    if (subtype.find("pharmacy") != std::string::npos) return "pharmacy.png";
-    if (subtype.find("post_office") != std::string::npos)
-        return "post_office.png";
-    if (subtype.find("shop") != std::string::npos
-        || subtype.find("supermarket") != std::string::npos)
-        return "supermarket.png";
+    // --- GASTRONOMIA / ROZRYWKA ---
+    if (matches("bar")) return "bar.png";
+    if (matches("pub")) return "bar.png";
+    if (matches("cafe")) return "cafe.png";
+    if (matches("restaurant")) return "restaurant.png";
+    if (matches("fast_food")) return "restaurant.png";
 
-    return "";
+    // --- ADMINISTRACJA ---
+    if (matches("townhall")) return "hall.png";
+    if (matches("government")) return "hall.png";
+    if (matches("public_building")) return "hall.png";
+
+    return "default.png"; // Brak dopasowania
 }
 
-// --- HELPER: £ADOWANIE TEKSTUR ---
-// Zmieniono: usuniêto basePath, szuka tylko w folderze images/ obok exe
 osg::StateSet*
 getSharedStateSet(const std::string& filename,
                   std::map<std::string, osg::ref_ptr<osg::StateSet>>& cache)
 {
     if (filename.empty()) return nullptr;
 
-    // 1. SprawdŸ cache
     auto it = cache.find(filename);
     if (it != cache.end())
     {
         return it->second.get();
     }
 
-    // 2. £adowanie TYLKO z folderu images/ w katalogu roboczym (tam gdzie exe)
-    std::string localPath = "images/" + filename;
+    std::string localPath = "images/labelsTextures/" + filename;
 
     osg::ref_ptr<osg::Image> image = osgDB::readRefImageFile(localPath);
 
     if (!image)
     {
-        // Opcjonalny fallback: spróbuj bez folderu images (jeœli pliki s¹ luzem
-        // obok exe)
-        image = osgDB::readRefImageFile(filename);
-    }
-
-    if (!image)
-    {
-        std::cerr << "Warning: Texture not found in local 'images/' folder: "
-                  << localPath << std::endl;
+        std::cerr << "Warning: Texture not found: " << localPath << std::endl;
         return nullptr;
     }
 
-    // 3. Tworzenie StateSet
     osg::ref_ptr<osg::StateSet> ss = new osg::StateSet();
     osg::Texture2D* tex = new osg::Texture2D(image);
     tex->setFilter(osg::Texture::MIN_FILTER,
@@ -274,12 +246,10 @@ getSharedStateSet(const std::string& filename,
     ss->setRenderingHint(osg::StateSet::TRANSPARENT_BIN);
     ss->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
 
-    // 4. Cache
     cache[filename] = ss;
     return ss.get();
 }
 
-// --- TWORZENIE BILLBOARDU ---
 osg::Billboard* createLabelNode(const LabelData& data,
                                 osg::StateSet* sharedIconStateSet)
 {
@@ -329,7 +299,7 @@ osg::Billboard* createLabelNode(const LabelData& data,
         if (!sharedFont) sharedFont = osgText::readRefFontFile("arial.ttf");
 
         text->setFont(sharedFont);
-        text->setText(data.name);
+        text->setText(osgText::String(data.name, osgText::String::ENCODING_UTF8));
         text->setAlignment(osgText::Text::CENTER_BOTTOM);
         text->setAxisAlignment(osgText::Text::XZ_PLANE);
         text->setCharacterSize(3.5f);
@@ -390,6 +360,8 @@ osg::Node* process_labels(osg::Matrixd& ltw, const std::string& file_path)
         ld.subtype = dbfReader.records[i].subtype;
         ld.type = dbfReader.records[i].type;
 
+        // Filtrowanie (pomijanie bardzo krótkich nazw i generycznych tagów w
+        // nazwie)
         if (ld.name.length() < 2) continue;
         if (ld.name == "public_transport" || ld.name == "bus_stop"
             || ld.name == "shelter" || ld.name == "platform")
@@ -409,12 +381,12 @@ osg::Node* process_labels(osg::Matrixd& ltw, const std::string& file_path)
 
         ld.position.z() += 25.0f;
 
+        // Dobieranie ikony wg Twojej listy
         std::string iconFile = determineIconTexture(ld.type, ld.subtype);
 
         osg::StateSet* iconSS = nullptr;
         if (!iconFile.empty())
         {
-            // TERAZ: wywo³anie bez file_path, szuka tylko lokalnie w images/
             iconSS = getSharedStateSet(iconFile, iconStateSets);
         }
 
@@ -424,7 +396,7 @@ osg::Node* process_labels(osg::Matrixd& ltw, const std::string& file_path)
     std::cout << "--- LABELS: Utworzono " << labelsGroup->getNumChildren()
               << " etykiet." << std::endl;
     std::cout << "--- TEXTURES: Zaladowano " << iconStateSets.size()
-              << " tekstur (szukano w ./images/)." << std::endl;
+              << " tekstur z folderu images/labelsTextures/." << std::endl;
 
     return labelsGroup;
 }
